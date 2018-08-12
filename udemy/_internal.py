@@ -58,6 +58,7 @@ class InternUdemyCourse(UdemyCourse, Udemy):
             sys.stdout.write('\r' + fc + sd + "[" + fm + sb + "*" + fc + sd + "] : " + fg + sb + "Downloaded course information .. (done)\r\n")
             self._id                =       self._info['course_id']
             self._title             =       self._info['course_title']
+            self.title_raw = self._info['course_title_raw']
             self._chapters_count    =       self._info['total_chapters']
             self._total_lectures    =       self._info['total_lectures']
             self._chapters          =       [InternUdemyChapter(z) for z in self._info['chapters']]
@@ -81,6 +82,7 @@ class InternUdemyChapter(UdemyChapters):
         self._unsafe_title      = chapter['unsafe_chapter']
         self._chapter_index     = chapter['chapter_index']
         self._lectures_count    = chapter['lectures_count']
+        self.chapter_title_raw = chapter['chapter_title_raw']
         self._lectures          = [InternUdemyLecture(z) for z in chapter['lectures']]
 
 
@@ -93,11 +95,13 @@ class InternUdemyLecture(UdemyLectures):
         self._lecture_id        = self._info['lectures_id']
         self._lecture_title     = self._info['lecture_title']
         self._unsafe_title      = self._info['unsafe_lecture']
+        self.lecture_title_raw = self._info['lecture_title_raw']
         self._lecture_index     = self._info['lecture_index']
         
         self._subtitles_count   = self._info['subtitle_count']
         self._sources_count     = self._info['sources_count']
         self._assets_count      = self._info['assets_count']
+        self.asset_type = self._info['asset_type']
         self._extension         = self._info.get('extension') or None
         self._html_content      = self._info.get('html_content') or None
         self._duration          = self._info.get('duration') or None
@@ -142,6 +146,7 @@ class InternUdemyLectureAssets(UdemyLectureAssets):
     def __init__(self, assets, parent):
         super(InternUdemyLectureAssets, self).__init__(parent)
 
+        self.asset_id = assets.get('id')
         self._mediatype = assets.get('type')
         self._extension = assets.get('extension')
         self._filename = '{0:03d} {1!s}'.format(parent._lecture_index, assets.get('filename'))

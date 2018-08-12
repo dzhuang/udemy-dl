@@ -154,6 +154,23 @@ class Udemy(ProgressBar):
         else:
             return resp
 
+    def _extract_course_title_raw(self, course_id):
+        url = MY_COURSES_URL
+        result = ""
+        try:
+            resp = self._session._get(url).json()
+        except conn_error as e:
+            sys.stdout.write(fc + sd + "[" + fr + sb + "-" + fc + sd + "] : " + fr + sb + "Connection error : make sure your internet connection is working.\n")
+            time.sleep(0.8)
+            sys.exit(0)
+        else:
+            results = resp['results']
+            for r in results:
+                if int(r["id"]) == int(course_id):
+                    return r['title']
+
+        return result
+
     def _html_to_json(self, view_html, lecture_id):
         data = parse_json(
                     search_regex(
@@ -274,7 +291,10 @@ class Udemy(ProgressBar):
                 download_url = track.get('url')
                 if not download_url or not isinstance(download_url, encoding):
                     continue
-                lang = track.get('language') or track.get('srclang') or track.get('label') or track['locale'].get('locale').split('_')[0]
+                lang_code = track.get('language') or track.get('srclang') or track.get('label') or track['locale'].get('locale')
+                if lang_code == "en_US":
+                    lang_code = 'en'
+                lang = lang_code.replace('_', '-')
                 ext = 'vtt' if 'vtt' in download_url.rsplit('.', 1)[-1] else 'srt'
                 _temp.append({
                     'type' : 'subtitle',
@@ -349,6 +369,10 @@ class Udemy(ProgressBar):
 
         course_json = self._extract_course_json(course_id)
         course = course_json.get('results')
+
+        with open("%s.json" % course_id, 'w') as file_object:
+            json.dump(course_json, file_object, indent=4)
+
         resource = course_json.get('detail')
 
         if resource:
@@ -364,6 +388,7 @@ class Udemy(ProgressBar):
 
         _udemy['course_id'] = course_id
         _udemy['course_title'] = course_title
+        _udemy['course_title_raw'] = self._extract_course_title_raw(course_id)
         _udemy['chapters'] = []
         
         counter = -1
@@ -388,6 +413,7 @@ class Udemy(ProgressBar):
                             'chapter_index' : chapter_index,
                             'unsafe_chapter' : unsafe_chapter,
                             'lectures' : [],
+                            'chapter_title_raw': entry.get('title'),
                             })
                         counter += 1
                 elif clazz == 'lecture':
@@ -406,6 +432,7 @@ class Udemy(ProgressBar):
                                 'chapter_index' : chapter_index,
                                 'unsafe_chapter' : unsafe_chapter,
                                 'lectures' : [],
+                                'chapter_title_raw': entry.get('title'),
                                 })
                             counter += 1
 
@@ -414,7 +441,7 @@ class Udemy(ProgressBar):
                         view_html   = entry.get('view_html')
                         retVal      = []
 
-
+                        asset_type = ''
                         if isinstance(asset, dict):
                             asset_type = asset.get('asset_type').lower() or asset.get('assetType').lower()
                             if asset_type == 'article':
@@ -455,6 +482,8 @@ class Udemy(ProgressBar):
                                     'subtitles' : self._extract_subtitles(tracks),
                                     'subtitle_count' : len(self._extract_subtitles(tracks)),
                                     'sources_count' : len(self._extract_sources(sources)),
+                                    'lecture_title_raw': entry.get('title'),
+                                    'asset_type': asset_type,
                                     })
                             else:
                                 lectures.append({
@@ -468,6 +497,8 @@ class Udemy(ProgressBar):
                                     'assets_count' : len(retVal),
                                     'subtitle_count' : 0,
                                     'sources_count' : 0,
+                                    'lecture_title_raw': entry.get('title'),
+                                    'asset_type': asset_type,
                                     })
                         if not view_html:
                             text = '\r' + fc + sd + "[" + fm + sb + "*" + fc + sd + "] : " + fg + sb + "Downloading course information .. "
@@ -493,6 +524,8 @@ class Udemy(ProgressBar):
                                     'subtitles' : self._extract_subtitles(tracks),
                                     'subtitle_count' : len(self._extract_subtitles(tracks)),
                                     'sources_count' : len(self._extract_sources(sources)),
+                                    'lecture_title_raw': entry.get('title'),
+                                    'asset_type': asset_type,
                                     })
                             else:
                                 lectures.append({
@@ -506,6 +539,8 @@ class Udemy(ProgressBar):
                                     'assets_count' : len(retVal),
                                     'subtitle_count' : 0,
                                     'sources_count' : 0,
+                                    'lecture_title_raw': entry.get('title'),
+                                    'asset_type': asset_type,
                                     })
 
                     _udemy['chapters'][counter]['lectures'] = lectures
@@ -525,6 +560,7 @@ class Udemy(ProgressBar):
                                 'chapter_id' : lecture_id,
                                 'chapter_index' : chapter_index,
                                 'lectures' : [],
+                                'chapter_title_raw': entry.get('title'),
                                 })
                             counter += 1
                     _udemy['chapters'][counter]['lectures'] = lectures

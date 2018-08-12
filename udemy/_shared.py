@@ -56,6 +56,8 @@ class UdemyCourse(object):
         self._chapters_count = None
         self._total_lectures = None
 
+        self.title_raw = None
+
         self._chapters = []
 
         if basic:
@@ -207,11 +209,20 @@ class UdemyLectures(object):
         if not streams:
             return None
         def _sortkey(x, keyres=0, keyftype=0):
-            keyres = int(x.resolution.split('x')[0])
+            keyres = int(x.resolution.split('x')[1])
             keyftype = x.extension
+            if keyres > 720:
+                keyres = -1
+            elif keyres == 720:
+                keyres = 3
+            elif 480 <= keyres <= 540:
+                keyres = 999
+            elif keyres == 360:
+                keyres = 2
+            else:
+                keyres = 1
             st = (keyftype, keyres)
             return st
-        
         self._best = max(streams, key=_sortkey)
         return self._best
 
@@ -474,6 +485,7 @@ class UdemyLectureStream(object):
                 outfh.close()
                 retVal = {"status" : "True", "msg" : "download"}
 
+        retVal['saved_path'] = filepath
         return retVal
 
 class UdemyLectureAssets(object):
@@ -700,6 +712,7 @@ class UdemyLectureAssets(object):
                 outfh.close()
                 retVal = {"status" : "True", "msg" : "download"}
 
+        retVal["saved_path"] = filepath
         return retVal
 
 class UdemyLectureSubtitles(object):
@@ -723,13 +736,13 @@ class UdemyLectureSubtitles(object):
     def _generate_filename(self):
         ok = re.compile(r'[^\\/:*?"<>|]')
         filename = "".join(x if ok.match(x) else "_" for x in self.title)
-        filename += "-{}.{}".format(self.language, self.extension)
+        filename += ".{}.{}".format(self.language, self.extension)
         return filename
 
     def _generate_unsafe_filename(self):
         ok = re.compile(r'[^\\/:*?"<>|]')
         filename = "".join(x if ok.match(x) else "_" for x in self.unsafe_title)
-        filename += "-{}.{}".format(self.language, self.extension)
+        filename += ".{}.{}".format(self.language, self.extension)
         return filename
 
     @property

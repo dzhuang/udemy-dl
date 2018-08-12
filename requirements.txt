@@ -4,3 +4,9 @@ colorama
 requests
 unidecode
 pyOpenSSL
+peewee
+django
+jinja2
+dropbox
+qiniu
+beautifulsoup4>=4.1.3

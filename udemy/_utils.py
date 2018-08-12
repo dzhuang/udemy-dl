@@ -142,8 +142,7 @@ def search_regex(pattern, string, name, default=NO_DEFAULT, fatal=True, flags=0,
     elif default is not NO_DEFAULT:
         return default
     elif fatal:
-        print('[-] Unable to extract %s' % _name)
-        exit(0)
+        raise RuntimeError("Unable to extract %s" % _name)
     else:
         print('[-] unable to extract %s' % _name)
         exit(0)

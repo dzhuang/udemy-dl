@@ -7,6 +7,9 @@ import time
 import udemy
 import argparse
 
+from udemy.models import (
+    database, Course, Lecture, Chapter, LectureSupplementAsset, LectureVideoAsset, create_tables)
+
 from pprint import pprint
 from udemy import __version__
 from udemy._colorized import *
@@ -67,6 +70,21 @@ class Udemy(WebVtt2Srt, ProgressBar):
             f.close()
 
         return retVal
+
+    def create_db_course(self, course_name, course_id, course_slug):
+        from peewee import OperationalError
+
+        try:
+            with database:
+                result, _ = Course.get_or_create(course_id=course_id,
+                                     course_name_string=course_name, course_slug=course_slug)
+        except OperationalError:
+            create_tables()
+            with database:
+                result, _ = Course.get_or_create(course_id=course_id,
+                                     course_name_string=course_name, course_slug=course_slug)
+
+        return result
 
     def course_save(self, path='', quality='', caption_only=False, skip_captions=False, names_only=False, unsafe=False):
         if not self.cookies:
@@ -168,8 +186,8 @@ class Udemy(WebVtt2Srt, ProgressBar):
             lectures_count = chapter.lectures
             sys.stdout.write ('\n' + fc + sd + "[" + fw + sb + "+" + fc + sd + "] : " + fw + sd + "Chapter (%s-%s)\n" % (chapter_title, chapter_id))
             sys.stdout.write (fc + sd + "[" + fm + sb + "*" + fc + sd + "] : " + fg + sd + "Lecture(s) (%s).\n" % (lectures_count))
-            if lecture_number and lecture_number > 0 and lecture_number <= lectures_count:
-                lecture = lectures[lecture_number-1]
+            if lecture_number and int(lecture_number) > 0 and int(lecture_number) <= int(lectures_count):
+                lecture = lectures[int(lecture_number)-1]
                 lecture_id = lecture.id
                 lecture_streams = lecture.streams
                 lecture_best = lecture.getbest()
@@ -329,13 +347,21 @@ class Udemy(WebVtt2Srt, ProgressBar):
                                     in_MB = "MB " if size < 1024.00 else 'GB '
                                 sys.stdout.write('\t- ' + fg + sd + "{:<22} {:<8}{}{}{}{}\n".format(str(subtitle), subtitle.extension, sz, in_MB, fy, sb))
 
-    def download_assets(self, lecture_assets='', filepath='', unsafe=False):
+    def download_assets(self, lecture_id='', lecture_assets='', filepath='', unsafe=False):
         if lecture_assets:
+            with database:
+                db_lecture = Lecture.get(lecture_id=lecture_id)
+
             for assets in lecture_assets:
                 title = assets.filename if not unsafe else "%s" % (assets)
                 mediatype = assets.mediatype
                 if mediatype == "external_link":
-                    assets.download(filepath=filepath, unsafe=unsafe, quiet=True, callback=self.show_progress)
+                    retval = assets.download(filepath=filepath, unsafe=unsafe, quiet=True, callback=self.show_progress)
+                    with database:
+                        db_asset = LectureSupplementAsset.get_or_create(asset_id=assets.id, lecture=db_lecture)
+                        db_asset.title = title
+                        db_asset.saved_path = retval['saved_path']
+                        db_asset.save()
                 else:
                     sys.stdout.write(fc + sd + "\n[" + fm + sb + "*" + fc + sd + "] : " + fg + sd + "Downloading asset(s)\n")
                     sys.stdout.write(fc + sd + "[" + fm + sb + "*" + fc + sd + "] : " + fg + sd + "Downloading (%s)\n" % (title))
@@ -350,11 +376,17 @@ class Udemy(WebVtt2Srt, ProgressBar):
                             sys.stdout.write (fc + sd + "[" + fm + sb + "*" + fc + sd + "] : " + fg + sd + "Asset : '%s' " % (title) + fy + sb + "(already downloaded).\n")
                         elif msg == 'download':
                             sys.stdout.write (fc + sd + "[" + fm + sb + "+" + fc + sd + "] : " + fg + sd + "Downloaded  (%s)\n" % (title))
+                            with database:
+                                db_asset, _ = LectureSupplementAsset.get_or_create(asset_id=assets.id,
+                                                                                   lecture=db_lecture)
+                                db_asset.title = title
+                                db_asset.saved_path = retval.get('saved_path', '')
+                                db_asset.save()
                         else:
                             sys.stdout.write (fc + sd + "[" + fm + sb + "*" + fc + sd + "] : " + fg + sd + "Asset : '%s' " % (title) + fc + sb + "(download skipped).\n")
                             sys.stdout.write (fc + sd + "[" + fr + sb + "-" + fc + sd + "] : " + fr + sd + "{}\n".format(msg))
 
-    def download_subtitles(self, lecture_subtitles='', filepath='', unsafe=False):
+    def download_subtitles(self, lecture_video_id='', lecture_subtitles='', filepath='', unsafe=False):
         if lecture_subtitles:
             for subtitles in lecture_subtitles:
                 title = subtitles.title + '-' + subtitles.language if not unsafe else "%s" % (subtitles)
@@ -368,6 +400,16 @@ class Udemy(WebVtt2Srt, ProgressBar):
                 
                 try:
                     retval = subtitles.download(filepath=filepath, unsafe=unsafe, quiet=True, callback=self.show_progress)
+                    subtitles_str = ''
+                    if lecture_subtitles:
+                        subtitles_str = ",".join(["%s.vtt" % sbt.language for sbt in lecture_subtitles])
+
+                    if subtitles_str and lecture_video_id:
+                        with database:
+                            db_video_asset = LectureVideoAsset.get(id=lecture_video_id)
+                            db_video_asset.subtitles = subtitles_str
+                            db_video_asset.save()
+
                 except KeyboardInterrupt:
                     sys.stdout.write (fc + sd + "\n[" + fr + sb + "-" + fc + sd + "] : " + fr + sd + "User Interrupted..\n")
                     sys.exit(0)
@@ -375,20 +417,21 @@ class Udemy(WebVtt2Srt, ProgressBar):
                     msg     = retval.get('msg')
                     if msg == 'already downloaded':
                         sys.stdout.write (fc + sd + "[" + fm + sb + "*" + fc + sd + "] : " + fg + sd + "Subtitle : '%s' " % (title) + fy + sb + "(already downloaded).\n")
-                        self.convert(filename=filename)
+                        # self.convert(filename=filename)
                     elif msg == 'download':
                         sys.stdout.write (fc + sd + "[" + fm + sb + "+" + fc + sd + "] : " + fg + sd + "Downloaded  (%s)\n" % (title))
-                        self.convert(filename=filename)
+                        # self.convert(filename=filename)
                     else:
                         sys.stdout.write (fc + sd + "[" + fm + sb + "*" + fc + sd + "] : " + fg + sd + "Subtitle : '%s' " % (title) + fc + sb + "(download skipped).\n")
                         sys.stdout.write (fc + sd + "[" + fr + sb + "-" + fc + sd + "] : " + fr + sd + "{}\n".format(msg))
 
-    def download_lectures(self, lecture_best='', lecture_title='', inner_index='', lectures_count='', filepath='', unsafe=False):
+    def download_lectures(self, lecture_id='', lecture_best='', lecture_title='', inner_index='', lectures_count='',
+                          filepath='', unsafe=False):
         if lecture_best:
             sys.stdout.write(fc + sd + "\n[" + fm + sb + "*" + fc + sd + "] : " + fg + sd + "Lecture(s) : ({index} of {total})\n".format(index=inner_index, total=lectures_count))
             sys.stdout.write(fc + sd + "[" + fm + sb + "*" + fc + sd + "] : " + fg + sd + "Downloading (%s)\n" % (lecture_title))
             try:
-                retval = lecture_best.download(filepath=filepath, unsafe=unsafe, quiet=True, callback=self.show_progress)
+                retval = lecture_best.download(filepath=filepath, unsafe=unsafe, quiet=True, callback=self.show_progress) # debug{"saved_path": "abcd", "msg": "download"}
             except KeyboardInterrupt:
                 sys.stdout.write (fc + sd + "\n[" + fr + sb + "-" + fc + sd + "] : " + fr + sd + "User Interrupted..\n")
                 sys.exit(0)
@@ -401,12 +444,19 @@ class Udemy(WebVtt2Srt, ProgressBar):
                         sys.stdout.write (fc + sd + "[" + fm + sb + "*" + fc + sd + "] : " + fg + sd + "'%s' " % (lecture_title) + fy + sb + "(already downloaded).\n")
                 elif msg == 'download':
                     sys.stdout.write (fc + sd + "[" + fm + sb + "+" + fc + sd + "] : " + fg + sd + "Downloaded  (%s)\n" % (lecture_title))
+                    with database:
+                        db_lecture = Lecture.get(lecture_id=lecture_id)
+                        db_lecture_asset, _ = LectureVideoAsset.get_or_create(lecture=db_lecture)
+                        db_lecture_asset.saved_path = retval['saved_path']
+                        db_lecture_asset.save()
                 else:
                     if not unsafe:
                         sys.stdout.write (fc + sd + "[" + fm + sb + "*" + fc + sd + "] : " + fg + sd + "Lecture : '%s' " % (lecture_title) + fc + sb + "(download skipped).\n")
                     if unsafe:
                         sys.stdout.write (fc + sd + "[" + fm + sb + "*" + fc + sd + "] : " + fg + sd + "'%s' " % (lecture_title) + fc + sb + "(download skipped).\n")
                     sys.stdout.write (fc + sd + "[" + fr + sb + "-" + fc + sd + "] : " + fr + sd + "{}\n".format(msg))
+
+                return retval
 
     def download_captions_only(self, lecture_subtitles='', lecture_assets='', filepath='', unsafe=False):
         if lecture_subtitles:
@@ -420,13 +470,28 @@ class Udemy(WebVtt2Srt, ProgressBar):
         if lecture_assets:
             self.download_assets(lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
 
-    def download_lectures_and_captions(self, lecture_best='', lecture_title='', inner_index='', lectures_count='', lecture_subtitles='', lecture_assets='', filepath='', unsafe=False):
+    def download_lectures_and_captions(self, lecture_id='', lecture_best='', lecture_title='', inner_index='', lectures_count='', lecture_subtitles='', lecture_assets='', filepath='', unsafe=False):
+        db_lecture = Lecture.get(lecture_id=lecture_id)
+
+        has_video = False
         if lecture_best:
-            self.download_lectures(lecture_best=lecture_best, lecture_title=lecture_title, inner_index=inner_index, lectures_count=lectures_count, filepath=filepath, unsafe=unsafe)
-        if lecture_subtitles:
-            self.download_subtitles(lecture_subtitles=lecture_subtitles, filepath=filepath, unsafe=unsafe)
+            has_video = True
+
+        if lecture_best:
+            retval = self.download_lectures(lecture_id=lecture_id, lecture_best=lecture_best, lecture_title=lecture_title, inner_index=inner_index,
+                                   lectures_count=lectures_count, filepath=filepath, unsafe=unsafe)
+
+            if retval:
+                with database:
+                    db_video, _ = LectureVideoAsset.get_or_create(lecture=db_lecture)
+                    db_video.saved_path = retval.get("saved_path", "")
+                    db_video.save()
+
+                if lecture_subtitles:
+                    self.download_subtitles(lecture_video_id=db_video.id, lecture_subtitles=lecture_subtitles, filepath=filepath, unsafe=unsafe)
+
         if lecture_assets:
-            self.download_assets(lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
+            self.download_assets(lecture_id=lecture_id, lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
 
     def course_download(self, path='', quality='', caption_only=False, skip_captions=False, unsafe=False):
         if not self.cookies:
@@ -436,6 +501,9 @@ class Udemy(WebVtt2Srt, ProgressBar):
         course = udemy.course(url=self.url, username=self.username, password=self.password, cookies=self.cookies)
         course_id = course.id
         course_name = course.title
+
+        db_course = self.create_db_course(course.title_raw, course_id, course_slug=course_name)
+
         chapters = course.get_chapters()
         total_lectures = course.lectures
         total_chapters = course.chapters
@@ -453,6 +521,14 @@ class Udemy(WebVtt2Srt, ProgressBar):
             chapter_id = chapter.id
             chapter_index = chapter.index
             chapter_title = chapter.title
+
+            with database:
+                db_chapter, _ = Chapter.get_or_create(
+                    course=db_course,
+                    chapter_id=chapter_id,
+                    chapter_index=chapter_index,
+                    title=chapter.chapter_title_raw, description="")
+
             lectures = chapter.get_lectures()
             lectures_count = chapter.lectures
             if unsafe:
@@ -477,6 +553,12 @@ class Udemy(WebVtt2Srt, ProgressBar):
                 lecture_title = lecture.title if not unsafe else "Lecture id : %s" % (lecture_id)
                 lecture_assets = lecture.assets
                 lecture_subtitles = lecture.subtitles
+
+                with database:
+                    db_lecture, _ = Lecture.get_or_create(
+                        chapter=db_chapter, title=lecture.lecture_title_raw, lecture_id=lecture_id,
+                        lecture_index=lecture_index, lecture_type=lecture.asset_type)
+
                 lecture_best = lecture.getbest()
                 lecture_streams = lecture.streams
                 if caption_only and not skip_captions:
@@ -508,7 +590,10 @@ class Udemy(WebVtt2Srt, ProgressBar):
                             lecture_best = lecture_best
                     if lecture.html:
                         lecture.dump(filepath=filepath, unsafe=unsafe)
-                    self.download_lectures_and_captions(lecture_best=lecture_best, lecture_title=lecture_title, inner_index=inner_index, lectures_count=lectures_count, lecture_subtitles=lecture_subtitles, lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
+                        with database:
+                            db_lecture.content = lecture.html
+                            db_lecture.save()
+                    self.download_lectures_and_captions(lecture_id=lecture_id, lecture_best=lecture_best, lecture_title=lecture_title, inner_index=inner_index, lectures_count=lectures_count, lecture_subtitles=lecture_subtitles, lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
                 inner_index += 1
 
     def chapter_download(self, chapter_number='', chapter_start='', chapter_end='', lecture_number='', lecture_start='', lecture_end='', path='', quality='', caption_only=False, skip_captions=False, unsafe=False):
@@ -601,7 +686,7 @@ class Udemy(WebVtt2Srt, ProgressBar):
                                 lecture_best = lecture_best
                         if lecture.html:
                             lecture.dump(filepath=filepath)
-                        self.download_lectures_and_captions(lecture_best=lecture_best, lecture_title=lecture_title, inner_index=lecture_number, lectures_count=lectures_count, lecture_subtitles=lecture_subtitles, lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
+                        self.download_lectures_and_captions(lecture_id=lecture_id, lecture_best=lecture_best, lecture_title=lecture_title, inner_index=lecture_number, lectures_count=lectures_count, lecture_subtitles=lecture_subtitles, lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
                 elif lecture_start and lecture_start > 0 and lecture_start <= lecture_end and lecture_end <= lectures_count:
                     while lecture_start <= lecture_end:
                         lecture = lectures[lecture_start-1]
@@ -641,7 +726,7 @@ class Udemy(WebVtt2Srt, ProgressBar):
                                     lecture_best = lecture_best
                             if lecture.html:
                                 lecture.dump(filepath=filepath, unsafe=unsafe)
-                            self.download_lectures_and_captions(lecture_best=lecture_best, lecture_title=lecture_title, inner_index=lecture_start, lectures_count=lecture_end, lecture_subtitles=lecture_subtitles, lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
+                            self.download_lectures_and_captions(lecture_id=lecture_id, lecture_best=lecture_best, lecture_title=lecture_title, inner_index=lecture_start, lectures_count=lecture_end, lecture_subtitles=lecture_subtitles, lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
                         lecture_start += 1
                 else:
                     inner_index = 1
@@ -682,7 +767,7 @@ class Udemy(WebVtt2Srt, ProgressBar):
                                     lecture_best = lecture_best
                             if lecture.html:
                                 lecture.dump(filepath=filepath, unsafe=unsafe)
-                            self.download_lectures_and_captions(lecture_best=lecture_best, lecture_title=lecture_title, inner_index=inner_index, lectures_count=lectures_count, lecture_subtitles=lecture_subtitles, lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
+                            self.download_lectures_and_captions(lecture_id=lecture_id, lecture_best=lecture_best, lecture_title=lecture_title, inner_index=inner_index, lectures_count=lectures_count, lecture_subtitles=lecture_subtitles, lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
                         inner_index += 1
         elif chapter_start and chapter_start > 0 and chapter_start <= chapter_end and chapter_end <= total_chapters:
             while chapter_start <= chapter_end:
@@ -743,7 +828,7 @@ class Udemy(WebVtt2Srt, ProgressBar):
                                 index += 1
                             if not lecture_best:
                                 lecture_best = lecture_best
-                        self.download_lectures_and_captions(lecture_best=lecture_best, lecture_title=lecture_title, inner_index=lecture_number, lectures_count=lectures_count, lecture_subtitles=lecture_subtitles, lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
+                        self.download_lectures_and_captions(lecture_id=lecture_id, lecture_best=lecture_best, lecture_title=lecture_title, inner_index=lecture_number, lectures_count=lectures_count, lecture_subtitles=lecture_subtitles, lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
                 elif lecture_start and lecture_start > 0 and lecture_start <= lecture_end and lecture_end <= lectures_count:
                     while lecture_start <= lecture_end:
                         lecture = lectures[lecture_start-1]
@@ -779,7 +864,7 @@ class Udemy(WebVtt2Srt, ProgressBar):
                                     index += 1
                                 if not lecture_best:
                                     lecture_best = lecture_best
-                            self.download_lectures_and_captions(lecture_best=lecture_best, lecture_title=lecture_title, inner_index=lecture_start, lectures_count=lecture_end, lecture_subtitles=lecture_subtitles, lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
+                            self.download_lectures_and_captions(lecture_id=lecture_id, lecture_best=lecture_best, lecture_title=lecture_title, inner_index=lecture_start, lectures_count=lecture_end, lecture_subtitles=lecture_subtitles, lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
                         lecture_start += 1
                 else:
                     inner_index = 1
@@ -816,7 +901,7 @@ class Udemy(WebVtt2Srt, ProgressBar):
                                     index += 1
                                 if not lecture_best:
                                     lecture_best = lecture_best
-                            self.download_lectures_and_captions(lecture_best=lecture_best, lecture_title=lecture_title, inner_index=inner_index, lectures_count=lectures_count, lecture_subtitles=lecture_subtitles, lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
+                            self.download_lectures_and_captions(lecture_id=lecture_id, lecture_best=lecture_best, lecture_title=lecture_title, inner_index=inner_index, lectures_count=lectures_count, lecture_subtitles=lecture_subtitles, lecture_assets=lecture_assets, filepath=filepath, unsafe=unsafe)
                         inner_index += 1
                 chapter_start += 1
         else:
