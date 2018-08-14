@@ -7,5 +7,4 @@ install:
   - pip install -r requirements.txt
 
 script:
-  - touch log.txt
-  - python udemy-dl.py "$COURSE_URL" -u "$USERNAME" -p "$PASSWORD" > log.txt  && python convert.py
+  - touch log.txt && python udemy-dl.py "$COURSE_URL" -u "$USERNAME" -p "$PASSWORD" > log.txt  && python convert.py

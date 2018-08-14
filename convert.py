@@ -364,6 +364,17 @@ def generate_yamls(course_slug):
     sys.stdout.write("--------------Done!-----------------\n")
 
 
+def tqdmWrapViewBar(*args, **kwargs):
+    from tqdm import tqdm
+    pbar = tqdm(*args, **kwargs)  # make a progressbar
+    last = [0]  # last known iteration, start at 0
+    def viewBar(a, b):
+        pbar.total = int(b)
+        pbar.update(int(a - last[0]))  # update pbar with increment
+        last[0] = a  # update last known iteration
+    return viewBar, pbar  # return callback, tqdmInstance
+
+
 def upload_yml_to_dropbox(file_name, file_content):
     if sys.platform.startswith("win"):
         return
@@ -404,7 +415,10 @@ def upload_resource_to_qiniu(file_path):
     size = os.stat(file_path).st_size / 1024 / 1024
     sys.stdout.write("Uploading file with hash %s (size: %.1fM)\n" % (file_etag, size))
     token = qiniu_auth.upload_token(QINIU_BUCKET_NAME, qiniu_file_path, 3600)
-    put_file(token, qiniu_file_path, file_path)
+
+    cbk, pbar = tqdmWrapViewBar(ascii=True, unit='b', unit_scale=True)
+    put_file(token, qiniu_file_path, file_path, progress_handler=cbk)
+    pbar.close()
 
 
 def main():
