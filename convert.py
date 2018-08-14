@@ -137,7 +137,7 @@ class UdemyPage(object):
     def __init__(self, id, title, content):
         self.id = id.replace("-", "_")
         self.title = title
-        self.content = content
+        self.content = content.replace("\t", " ")
 
 
 class UdemyVideoSubtitle(object):
