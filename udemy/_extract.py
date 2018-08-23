@@ -145,7 +145,7 @@ class Udemy(ProgressBar):
                                                         'course id'
                                                         )
             except UnableToExtractError:
-                sys.stdout.write(
+                sys.stderr.write(
                     fc + sd + "[" + fr + sb + "-" + fc + sd + "] : " + fr + sb + "Extract error: sleep for 10 seconds for a retry.\n")
                 time.sleep(10)
 

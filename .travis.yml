@@ -7,4 +7,17 @@ install:
   - pip install -r requirements.txt
 
 script:
-  - touch log.txt && python udemy-dl.py "$COURSE_URL" -u "$USERNAME" -p "$PASSWORD" > log.txt  && python convert.py
+  - wget "$LIST_URL" -O list.txt -q
+  - touch log.txt
+  - |
+    while IFS='' read -r line || [[ -n "$line" ]]; do
+
+        # strip trailing line break
+        line=$(echo $line|tr -d '\r')
+
+        # skip comments
+        if [[ $line != "#"* ]]; then
+          python udemy-dl.py "$line" -u "$USERNAME" -p "$PASSWORD" > log.txt
+        fi
+    done < list.txt
+  - python convert.py

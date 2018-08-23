@@ -437,7 +437,7 @@ def main():
 
     except OperationalError as e:
         if "no such table" in str(e):
-            sys.stdout.write("No Course was downloaded.")
+            sys.stdout.write("Warning: No Course was downloaded.")
 
 
 if __name__ == "__main__":
