@@ -116,6 +116,11 @@ def hidden_inputs(html):
             hidden_inputs[name] = value
     return hidden_inputs
 
+
+class UnableToExtractError(Exception):
+    pass
+
+
 def search_regex(pattern, string, name, default=NO_DEFAULT, fatal=True, flags=0, group=None):
     """
     Perform a regex search on the given string, using a single or a list of
@@ -142,7 +147,7 @@ def search_regex(pattern, string, name, default=NO_DEFAULT, fatal=True, flags=0,
     elif default is not NO_DEFAULT:
         return default
     elif fatal:
-        raise RuntimeError("Unable to extract %s" % _name)
+        raise UnableToExtractError("Unable to extract %s" % _name)
     else:
         print('[-] unable to extract %s' % _name)
         exit(0)

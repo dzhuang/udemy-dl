@@ -34,6 +34,7 @@ from ._utils import (
             parse_json,
             js_to_json,
             search_regex,
+            UnableToExtractError,
             unescapeHTML
             )
 from ._compat import (
@@ -112,36 +113,47 @@ class Udemy(ProgressBar):
         return self._session.terminate()
 
     def _extract_course_info(self, url):
+        n_retry = 3
         if 'www' not in url:
             self._session._headers['Host'] = url.replace("https://", "").split('/', 1)[0]
             self._session._headers['Referer'] = url
-        try:
-            webpage = self._session._get(url).text
-        except conn_error as e:
-            sys.stdout.write(fc + sd + "[" + fr + sb + "-" + fc + sd + "] : " + fr + sb + "Connection error : make sure your internet connection is working.\n")
-            time.sleep(0.8)
-            sys.exit(0)
-        else:
-            course = parse_json(
-                        search_regex(
-                            r'ng-init=["\'].*\bcourse=({.+?});', 
-                            webpage, 
-                            'course', 
-                            default='{}'
-                            ),
-                        "Course Information",
-                        transform_source=unescapeHTML,
-                        fatal=False,
-                        )
-            course_id = course.get('id') or search_regex(
-                                                (r'data-course-id=["\'](\d+)', r'&quot;id&quot;\s*:\s*(\d+)'),
-                                                webpage, 
-                                                'course id'
-                                                )
-        if course_id:
-            return course_id, course
-        else:
-            sys.exit(0)
+
+        n = 0
+        while n <= 3:
+            try:
+                try:
+                    webpage = self._session._get(url).text
+                except conn_error as e:
+                    sys.stdout.write(fc + sd + "[" + fr + sb + "-" + fc + sd + "] : " + fr + sb + "Connection error : make sure your internet connection is working.\n")
+                    time.sleep(0.8)
+                    raise e
+                else:
+                    course = parse_json(
+                                search_regex(
+                                    r'ng-init=["\'].*\bcourse=({.+?});',
+                                    webpage,
+                                    'course',
+                                    default='{}'
+                                    ),
+                                "Course Information",
+                                transform_source=unescapeHTML,
+                                fatal=False,
+                                )
+                    course_id = course.get('id') or search_regex(
+                                                        (r'data-course-id=["\'](\d+)', r'&quot;id&quot;\s*:\s*(\d+)'),
+                                                        webpage,
+                                                        'course id'
+                                                        )
+            except UnableToExtractError:
+                sys.stdout.write(
+                    fc + sd + "[" + fr + sb + "-" + fc + sd + "] : " + fr + sb + "Extract error: sleep for 10 seconds for a retry.\n")
+                time.sleep(10)
+
+            else:
+                if course_id:
+                    return course_id, course
+                else:
+                    sys.exit(0)
 
     def _extract_course_json(self, course_id):
         url = COURSE_URL.format(course_id=course_id)

@@ -44,7 +44,7 @@ class UdemyCourse(object):
 
     def __init__(self, url, username='', password='', cookies='', basic=True, callback=None):
 
-        self._url = url
+        self._url = self._normalize_url(url)
         self._username = username
         self._password = password
         self._cookies = cookies 
@@ -62,6 +62,13 @@ class UdemyCourse(object):
 
         if basic:
             self._fetch_course()
+
+    def _normalize_url(self, url):
+        guessed_url = url
+        if "/" not in url:
+            # when only course slug is inputed as url
+            guessed_url = "https://www.udemy.com/%s/" % url
+        return guessed_url
 
     def _fetch_course(self):
         raise NotImplementedError
