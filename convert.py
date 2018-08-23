@@ -4,7 +4,7 @@ import os
 import sys
 import jinja2
 import re
-from peewee import SqliteDatabase
+from peewee import SqliteDatabase, OperationalError
 from udemy.models import (
     Chapter, LectureVideoAsset, Lecture, LectureSupplementAsset, Course)
 from django.conf.global_settings import LANGUAGES
@@ -428,12 +428,16 @@ def upload_resource_to_qiniu(file_path):
 
 
 def main():
-    with database:
-        courses = Course.select()
+    try:
+        with database:
+            courses = Course.select()
+            course_slugs = [course.course_slug for course in courses]
+            for slug in course_slugs:
+                generate_yamls(slug)
 
-    course_slugs = [course.course_slug for course in courses]
-    for slug in course_slugs:
-        generate_yamls(slug)
+    except OperationalError as e:
+        if "no such table" in str(e):
+            sys.stdout.write("No Course was downloaded.")
 
 
 if __name__ == "__main__":
