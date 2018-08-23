@@ -61,7 +61,7 @@ pages:
 """
 
 video_template = """
-<video class="video-js vjs-default-skin vjs-fluid vjs-big-play-centered" controls preload="none" data-setup='[]'>
+<video class="video-js vjs-default-skin vjs-fluid vjs-big-play-centered" controls preload="none" data-setup='[]' playsinline>
   <source src='{{ video.url }}' type='video/mp4' />
   {% for subtitle in video.subtitles %}<track kind='captions' src='{{ subtitle.url }}' srclang='{{ subtitle.lang }}' label='{{ subtitle.lang_name}}' {% if subtitle.is_default %} default {% endif %} />
   {% endfor %}
@@ -323,6 +323,7 @@ def generate_flow(chapter_id, ordinal):
             f.write(output)
 
     upload_yml_to_dropbox("/" + os.path.join(course_slug, "flows", yaml_path), output.encode())
+    sys.stdout.write("---%s uploaded to Dropbox.---\n" % flow_id)
     return flow_id
 
 
