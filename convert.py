@@ -432,12 +432,14 @@ def main():
         with database:
             courses = Course.select()
             course_slugs = [course.course_slug for course in courses]
-            for slug in course_slugs:
-                generate_yamls(slug)
+        for slug in course_slugs:
+            generate_yamls(slug)
 
     except OperationalError as e:
         if "no such table" in str(e):
             sys.stdout.write("Warning: No Course was downloaded.")
+        else:
+            raise e
 
 
 if __name__ == "__main__":
