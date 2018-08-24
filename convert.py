@@ -11,8 +11,6 @@ from django.conf.global_settings import LANGUAGES
 from bs4 import BeautifulSoup as BeautifulSoup_
 from qiniu import Auth, put_file, etag, BucketManager
 
-QINIU_BUCKET_URL_PREFIX = os.environ.get("QINIU_BUCKET_URL_PREFIX", "foo")
-
 LOCAL_PATH_PREFIX = os.getcwd()
 
 database = SqliteDatabase(os.path.join(LOCAL_PATH_PREFIX, "udemy-dl.db"))
@@ -62,8 +60,8 @@ pages:
 
 video_template = """
 <video class="video-js vjs-default-skin vjs-fluid vjs-big-play-centered" controls preload="none" data-setup='[]' playsinline>
-  <source src='{{ video.url }}' type='video/mp4' />
-  {% for subtitle in video.subtitles %}<track kind='captions' src='{{ subtitle.url }}' srclang='{{ subtitle.lang }}' label='{{ subtitle.lang_name}}' {% if subtitle.is_default %} default {% endif %} />
+  <source src='mooc-udemy:{{ video.url }}' type='video/mp4' />
+  {% for subtitle in video.subtitles %}<track kind='captions' src='mooc-udemy:{{ subtitle.url }}' srclang='{{ subtitle.lang }}' label='{{ subtitle.lang_name}}' {% if subtitle.is_default %} default {% endif %} />
   {% endfor %}
 </video>
 """
@@ -76,7 +74,7 @@ resource_template = """
 <h3>Resources</h3>
 <ul>{% for asset in assets %}
   <li>{% if asset.is_pdf %}{% raw %}{{ downloadviewpdf("{% endraw %}{{asset.url}}{% raw %}", "{% endraw %}{{asset.name}}{% raw %}")}}{% endraw %}{% else %}
-  <a href="{{asset.url}}" target="_blank">{{asset.name}}</a>{% endif %}</li>{% endfor %}
+  <a href="mooc-udemy:{{asset.url}}" target="_blank">{{asset.name}}</a>{% endif %}</li>{% endfor %}
 </ul>
 
 """
@@ -212,7 +210,8 @@ def local_path_to_url(local_path, ext=None):
         local_path = os.path.relpath(local_path, start=os.getcwd())
         upload_resource_to_qiniu(local_path)
         striped_local_path = local_path
-    return urljoin(QINIU_BUCKET_URL_PREFIX, striped_local_path)
+    assert not striped_local_path.startswith("/")
+    return striped_local_path
 
 
 def convert_video_page(database, video_lecture):
@@ -401,7 +400,6 @@ def upload_resource_to_qiniu(file_path):
     file_etag = etag(file_path)
     bucket = BucketManager(qiniu_auth)
 
-    # QINIU_BUCKET_URL_PREFIX should also end with the following.
     prefix = "udemy-videos"
     
     # strip local (absolute) path to relative path
