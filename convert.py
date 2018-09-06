@@ -62,8 +62,8 @@ pages:
 
 video_template = """
 <video class="video-js vjs-default-skin vjs-fluid vjs-big-play-centered" controls preload="none" data-setup='[]' playsinline>
-  <source src='mooc:{{ video.url }}' type='video/mp4' />
-  {% for subtitle in video.subtitles %}<track kind='captions' src='mooc:{{ subtitle.url }}' srclang='{{ subtitle.lang }}' label='{{ subtitle.lang_name}}' {% if subtitle.is_default %} default {% endif %} />
+  <source src='mooc-udemy:{{ video.url }}' type='video/mp4' />
+  {% for subtitle in video.subtitles %}<track kind='captions' src='mooc-udemy:{{ subtitle.url }}' srclang='{{ subtitle.lang }}' label='{{ subtitle.lang_name}}' {% if subtitle.is_default %} default {% endif %} />
   {% endfor %}
 </video>
 """
@@ -76,7 +76,7 @@ resource_template = """
 <h3>Resources</h3>
 <ul>{% for asset in assets %}
   <li>{% if asset.is_pdf %}{% raw %}{{ downloadviewpdf("{% endraw %}{{asset.url}}{% raw %}", "{% endraw %}{{asset.name}}{% raw %}")}}{% endraw %}{% else %}
-  <a href="mooc:{{asset.url}}" target="_blank">{{asset.name}}</a>{% endif %}</li>{% endfor %}
+  <a href="mooc-udemy:{{asset.url}}" target="_blank">{{asset.name}}</a>{% endif %}</li>{% endfor %}
 </ul>
 
 """

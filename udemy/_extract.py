@@ -113,7 +113,8 @@ class Udemy(ProgressBar):
         return self._session.terminate()
 
     def _extract_course_info(self, url):
-        n_retry = 5
+        n_retry = int(os.environ.get("N_LOGIN_RETRIES", 5))
+        time_wait = int(os.environ.get("LOGIN_WAIT", 10))
         if 'www' not in url:
             self._session._headers['Host'] = url.replace("https://", "").split('/', 1)[0]
             self._session._headers['Referer'] = url
@@ -146,9 +147,9 @@ class Udemy(ProgressBar):
                                                         )
             except UnableToExtractError:
                 sys.stderr.write(
-                    fc + sd + "[" + fr + sb + "-" + fc + sd + "] : " + fr + sb + "Extract error: sleep for 10 seconds for a retry.\n")
+                    fc + sd + "[" + fr + sb + "-" + fc + sd + "] : " + fr + sb + "Extract error: sleep for %d seconds for a retry.\n" % time_wait)
                 n += 1
-                time.sleep(10)
+                time.sleep(time_wait)
 
             else:
                 if course_id:
