@@ -20,12 +20,12 @@ upload_to_qiniu = False
 QINIU_ACCESS_KEY = os.environ.get("QINIU_ACCESS_KEY", "")
 QINIU_SECRET_KEY = os.environ.get("QINIU_SECRET_KEY", "")
 QINIU_BUCKET_NAME = os.environ.get("QINIU_BUCKET_NAME", "")
-QINIU_BUCKET_VIDEO_NAME = os.environ.get("QINIU_BUCKET_VIDEO_NAME", "")
+QINIU_VIDEO_BUCKET_NAME = os.environ.get("QINIU_BUCKET_VIDEO_NAME", "")
 
 qiniu_auth = None
 
 if (not sys.platform.startswith("win")
-        and QINIU_ACCESS_KEY and QINIU_SECRET_KEY and QINIU_BUCKET_NAME and QINIU_BUCKET_VIDEO_NAME):
+        and QINIU_ACCESS_KEY and QINIU_SECRET_KEY and QINIU_BUCKET_NAME and QINIU_VIDEO_BUCKET_NAME):
     upload_to_qiniu = True
     qiniu_auth = Auth(QINIU_ACCESS_KEY, QINIU_SECRET_KEY)
 
@@ -427,7 +427,7 @@ def upload_resource_to_qiniu(file_path):
         return
 
     if file_path.endswith(".mp4"):
-        return _upload_resource_to_qiniu(QINIU_BUCKET_VIDEO_NAME, file_path)
+        return _upload_resource_to_qiniu(QINIU_VIDEO_BUCKET_NAME, file_path)
     else:
         return _upload_resource_to_qiniu(QINIU_BUCKET_NAME, file_path)
 
