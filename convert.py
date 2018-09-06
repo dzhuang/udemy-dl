@@ -10,6 +10,7 @@ from udemy.models import (
 from django.conf.global_settings import LANGUAGES
 from bs4 import BeautifulSoup as BeautifulSoup_
 from qiniu import Auth, put_file, etag, BucketManager
+from qiniu import build_batch_move
 
 LOCAL_PATH_PREFIX = os.getcwd()
 
@@ -19,11 +20,12 @@ upload_to_qiniu = False
 QINIU_ACCESS_KEY = os.environ.get("QINIU_ACCESS_KEY", "")
 QINIU_SECRET_KEY = os.environ.get("QINIU_SECRET_KEY", "")
 QINIU_BUCKET_NAME = os.environ.get("QINIU_BUCKET_NAME", "")
+QINIU_BUCKET_VIDEO_NAME = os.environ.get("QINIU_BUCKET_VIDEO_NAME", "")
 
 qiniu_auth = None
 
 if (not sys.platform.startswith("win")
-        and QINIU_ACCESS_KEY and QINIU_SECRET_KEY and QINIU_BUCKET_NAME):
+        and QINIU_ACCESS_KEY and QINIU_SECRET_KEY and QINIU_BUCKET_NAME and QINIU_BUCKET_VIDEO_NAME):
     upload_to_qiniu = True
     qiniu_auth = Auth(QINIU_ACCESS_KEY, QINIU_SECRET_KEY)
 
@@ -60,8 +62,8 @@ pages:
 
 video_template = """
 <video class="video-js vjs-default-skin vjs-fluid vjs-big-play-centered" controls preload="none" data-setup='[]' playsinline>
-  <source src='cdn:{{ video.url }}' type='video/mp4' />
-  {% for subtitle in video.subtitles %}<track kind='captions' src='cdn:{{ subtitle.url }}' srclang='{{ subtitle.lang }}' label='{{ subtitle.lang_name}}' {% if subtitle.is_default %} default {% endif %} />
+  <source src='mooc:{{ video.url }}' type='video/mp4' />
+  {% for subtitle in video.subtitles %}<track kind='captions' src='mooc:{{ subtitle.url }}' srclang='{{ subtitle.lang }}' label='{{ subtitle.lang_name}}' {% if subtitle.is_default %} default {% endif %} />
   {% endfor %}
 </video>
 """
@@ -74,7 +76,7 @@ resource_template = """
 <h3>Resources</h3>
 <ul>{% for asset in assets %}
   <li>{% if asset.is_pdf %}{% raw %}{{ downloadviewpdf("{% endraw %}{{asset.url}}{% raw %}", "{% endraw %}{{asset.name}}{% raw %}")}}{% endraw %}{% else %}
-  <a href="cdn:{{asset.url}}" target="_blank">{{asset.name}}</a>{% endif %}</li>{% endfor %}
+  <a href="mooc:{{asset.url}}" target="_blank">{{asset.name}}</a>{% endif %}</li>{% endfor %}
 </ul>
 
 """
@@ -393,19 +395,14 @@ def upload_yml_to_dropbox(file_name, file_content):
     return dbx.files_upload(file_content, file_name, mode=WriteMode.overwrite)
 
 
-def upload_resource_to_qiniu(file_path):
-    if not qiniu_auth or not upload_to_qiniu:
-        return
-
+def _upload_resource_to_qiniu(bucket_name, file_path, prefix="udemy-videos"):
     file_etag = etag(file_path)
     bucket = BucketManager(qiniu_auth)
 
-    prefix = "udemy-videos"
-    
     # strip local (absolute) path to relative path
     file_path = os.path.relpath(file_path, start=os.getcwd())
     qiniu_file_path = os.path.join(prefix, file_path)
-    ret, _ = bucket.stat(QINIU_BUCKET_NAME, qiniu_file_path)
+    ret, _ = bucket.stat(bucket_name, qiniu_file_path)
 
     # Check if the file exists / changed, if not, upload or update.
     if ret and "hash" in ret:
@@ -418,11 +415,21 @@ def upload_resource_to_qiniu(file_path):
 
     size = os.stat(file_path).st_size / 1024 / 1024
     sys.stdout.write("Uploading file with hash %s (size: %.1fM)\n" % (file_etag, size))
-    token = qiniu_auth.upload_token(QINIU_BUCKET_NAME, qiniu_file_path, 3600)
+    token = qiniu_auth.upload_token(bucket_name, qiniu_file_path, 3600)
 
     cbk, pbar = tqdmWrapViewBar(ascii=True, unit='b', unit_scale=True)
     put_file(token, qiniu_file_path, file_path, progress_handler=cbk)
     pbar.close()
+
+
+def upload_resource_to_qiniu(file_path):
+    if not qiniu_auth or not upload_to_qiniu:
+        return
+
+    if file_path.endswith(".mp4"):
+        return _upload_resource_to_qiniu(QINIU_BUCKET_VIDEO_NAME, file_path)
+    else:
+        return _upload_resource_to_qiniu(QINIU_BUCKET_NAME, file_path)
 
 
 def main():
